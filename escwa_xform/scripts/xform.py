@@ -21,41 +21,42 @@ def run():
     DB.connect(args.connect, database=args.database)
 
     if path := args.output_file:
-        OUT = open(path, '+')
+        OUT = open(path, 'w')
 
     with open(args.input_file, 'r') as IN:
         text = IN.read()
         bibs = BibSet.from_mrk(text, auth_control=False)
 
         for bib in bibs.records:
-            if 'eng' not in bib.get_values('041', 'a'):
-                continue
+           if bib := xform(bib):
+                if args.output_file:
+                    OUT.write(bib.to_mrk(write_id=False) + '\n')
+                elif args.write_db:
+                    print(bib.to_mrk())
+                    prompt = input('import record? y/n: ')
 
-            bib = xform(bib)
-
-            if args.output_file:
-                OUT.write(bib.to_mrk(write_id=False))
-            elif args.write_db:
-                # confirm?
-                print(bib.to_mrk())
-                prompt = input('import record? y/n: ')
-
-                if prompt.lower() == 'y':
-                    bib.commit(user='ESCWAi')
-                    print(f'Imported with bib# {bib.id}\n')
-            else:
-                print(bib.to_mrk())
+                    if prompt.lower() == 'y':
+                        bib.commit(user='ESCWAi')
+                        print(f'Imported with bib# {bib.id}\n')
+                else:
+                    print(bib.to_mrk())
 
     if args.output_file:
         OUT.close()       
 
-def xform(record):
+def xform(record: Bib) -> Bib | None:
+    '''Returns None if the record is not eligible to be used'''
+
+    # 041
+    if 'eng' not in record.get_values('041', 'a'):
+        return
+
     # 092/191
     for field in record.get_fields('092'):
         # check if the symbol exists
         if Bib.from_query({'191.subfields.value': field.get_value('a')}, projection={'_id': 1}):
-            continue
-
+            return
+        
         field.tag = '191'
         field.subfields = [x for x in field.subfields if x.code != 'b']
         #field.set('b', 386566, auth_control=True)
